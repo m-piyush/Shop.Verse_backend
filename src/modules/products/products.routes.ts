@@ -15,4 +15,9 @@ router.delete('/:id', authenticate, authorize('ADMIN'), ctrl.remove);
 router.post('/:id/images', authenticate, authorize('ADMIN'), ctrl.addImages);
 router.delete('/images/:imageId', authenticate, authorize('ADMIN'), ctrl.removeImage);
 
+router.get('/:id/variants', ctrl.getVariants);
+router.post('/:id/variants', authenticate, authorize('ADMIN'), ctrl.addVariant);
+router.put('/variants/:variantId', authenticate, authorize('ADMIN'), ctrl.updateVariant);
+router.delete('/variants/:variantId', authenticate, authorize('ADMIN'), ctrl.removeVariant);
+
 export default router;

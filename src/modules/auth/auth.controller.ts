@@ -88,7 +88,7 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     where: { id: req.user!.id },
     select: {
       id: true, name: true, email: true, role: true, phone: true,
-      avatarUrl: true, createdAt: true,
+      avatarUrl: true, birthday: true, createdAt: true,
       addresses: true,
       _count: { select: { orders: true, reviews: true, wishlist: true } },
     },
@@ -100,7 +100,7 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const updateProfile = asyncHandler(async (req: Request, res: Response) => {
-  const { name, phone, avatarUrl } = req.body;
+  const { name, phone, avatarUrl, birthday } = req.body;
 
   const user = await prisma.user.update({
     where: { id: req.user!.id },
@@ -108,8 +108,9 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
       ...(name && { name }),
       ...(phone && { phone }),
       ...(avatarUrl !== undefined && { avatarUrl }),
+      ...(birthday !== undefined && { birthday: birthday ? new Date(birthday) : null }),
     },
-    select: { id: true, name: true, email: true, role: true, phone: true, avatarUrl: true },
+    select: { id: true, name: true, email: true, role: true, phone: true, avatarUrl: true, birthday: true },
   });
 
   sendResponse(res, { message: 'Profile updated', data: user });

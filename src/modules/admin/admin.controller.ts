@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import prisma from '../../config/prisma';
 import ApiError from '../../utils/ApiError';
 import asyncHandler from '../../utils/asyncHandler';
@@ -116,12 +117,21 @@ export const getUser = asyncHandler(async (req: Request, res: Response) => {
     where: { id: req.params.id as string },
     select: {
       id: true, name: true, email: true, role: true, phone: true,
-      isActive: true, createdAt: true, avatarUrl: true,
+      isActive: true, createdAt: true, avatarUrl: true, birthday: true,
       addresses: true,
       orders: {
-        take: 10,
+        take: 20,
         orderBy: { createdAt: 'desc' },
-        select: { id: true, orderNumber: true, status: true, total: true, createdAt: true },
+        select: {
+          id: true, orderNumber: true, status: true, total: true, createdAt: true,
+          items: {
+            select: {
+              id: true, productName: true, quantity: true, price: true,
+              product: { select: { slug: true, images: { where: { isPrimary: true }, take: 1, select: { url: true } } } },
+            },
+          },
+          payment: { select: { method: true, status: true } },
+        },
       },
       _count: { select: { orders: true, reviews: true } },
     },
@@ -141,4 +151,68 @@ export const updateUserStatus = asyncHandler(async (req: Request, res: Response)
   });
 
   sendResponse(res, { message: `User ${isActive ? 'activated' : 'deactivated'}`, data: user });
+});
+
+export const resetUserPassword = asyncHandler(async (req: Request, res: Response) => {
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    throw ApiError.badRequest('Password must be at least 6 characters');
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.params.id as string } });
+  if (!user) throw ApiError.notFound('User not found');
+
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({
+    where: { id: req.params.id as string },
+    data: { password: hashedPassword },
+  });
+
+  sendResponse(res, { message: `Password reset for ${user.name}` });
+});
+
+export const getAdmins = asyncHandler(async (_req: Request, res: Response) => {
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true, name: true, email: true, phone: true, isActive: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  sendResponse(res, { data: admins });
+});
+
+export const createAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const { name, email, password, phone } = req.body;
+
+  if (!name || !email || !password) {
+    throw ApiError.badRequest('Name, email and password are required');
+  }
+  if (password.length < 6) {
+    throw ApiError.badRequest('Password must be at least 6 characters');
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) throw ApiError.badRequest('Email already in use');
+
+  const hashedPassword = await bcrypt.hash(password, 12);
+  const admin = await prisma.user.create({
+    data: { name, email, passwordHash: hashedPassword, role: 'ADMIN', phone: phone || null },
+    select: { id: true, name: true, email: true, role: true, createdAt: true },
+  });
+
+  sendResponse(res, { statusCode: 201, message: 'Admin created', data: admin });
+});
+
+export const removeAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id as string } });
+  if (!user) throw ApiError.notFound('User not found');
+  if (user.role !== 'ADMIN') throw ApiError.badRequest('User is not an admin');
+  if (user.id === req.user!.id) throw ApiError.badRequest('Cannot remove yourself');
+
+  await prisma.user.update({
+    where: { id: req.params.id as string },
+    data: { role: 'CUSTOMER' },
+  });
+
+  sendResponse(res, { message: `${user.name} is no longer an admin` });
 });

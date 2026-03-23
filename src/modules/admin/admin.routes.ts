@@ -11,5 +11,10 @@ router.get('/dashboard', ctrl.getDashboard);
 router.get('/users', ctrl.getUsers);
 router.get('/users/:id', ctrl.getUser);
 router.put('/users/:id/status', [body('isActive').isBoolean()], ctrl.updateUserStatus);
+router.put('/users/:id/reset-password', [body('newPassword').isString().isLength({ min: 6 })], ctrl.resetUserPassword);
+
+router.get('/admins', ctrl.getAdmins);
+router.post('/admins', ctrl.createAdmin);
+router.delete('/admins/:id', ctrl.removeAdmin);
 
 export default router;

@@ -25,6 +25,9 @@ export const getCart = asyncHandler(async (req: Request, res: Response) => {
           images: { where: { isPrimary: true }, take: 1 },
         },
       },
+      variant: {
+        select: { id: true, size: true, color: true, colorCode: true, imageUrl: true, stock: true, price: true },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -44,22 +47,39 @@ export const getCart = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const addItem = asyncHandler(async (req: Request, res: Response) => {
-  const { productId, quantity = 1 } = req.body;
+  const { productId, quantity = 1, variantId } = req.body;
 
-  const product = await prisma.product.findUnique({ where: { id: productId } });
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { variants: { where: { isActive: true } } },
+  });
   if (!product || !product.isActive) throw ApiError.notFound('Product not found');
-  if (product.stock < quantity) throw ApiError.badRequest('Insufficient stock');
+
+  // If product has variants, require variantId
+  if (product.variants.length > 0 && !variantId) {
+    throw ApiError.badRequest('Please select a variant (size/color)');
+  }
+
+  // Check variant stock if provided
+  let stockToCheck = product.stock;
+  if (variantId) {
+    const variant = product.variants.find((v) => v.id === variantId);
+    if (!variant) throw ApiError.badRequest('Invalid variant');
+    stockToCheck = variant.stock;
+  }
+  if (stockToCheck < quantity) throw ApiError.badRequest('Insufficient stock');
 
   const cart = await getOrCreateCart(req.user!.id);
 
-  const existing = await prisma.cartItem.findUnique({
-    where: { cartId_productId: { cartId: cart.id, productId } },
+  // Find existing cart item with same product + variant combo
+  const existing = await prisma.cartItem.findFirst({
+    where: { cartId: cart.id, productId, variantId: variantId || null },
   });
 
   let item;
   if (existing) {
     const newQty = existing.quantity + quantity;
-    if (product.stock < newQty) throw ApiError.badRequest('Insufficient stock');
+    if (stockToCheck < newQty) throw ApiError.badRequest('Insufficient stock');
     item = await prisma.cartItem.update({
       where: { id: existing.id },
       data: { quantity: newQty },
@@ -67,7 +87,7 @@ export const addItem = asyncHandler(async (req: Request, res: Response) => {
     });
   } else {
     item = await prisma.cartItem.create({
-      data: { cartId: cart.id, productId, quantity },
+      data: { cartId: cart.id, productId, quantity, variantId: variantId || null },
       include: { product: { select: { id: true, name: true, price: true } } },
     });
   }

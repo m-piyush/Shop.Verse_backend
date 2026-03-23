@@ -77,6 +77,7 @@ export const getBySlug = asyncHandler(async (req: Request, res: Response) => {
       images: { orderBy: { sortOrder: 'asc' } },
       category: { select: { id: true, name: true, slug: true } },
       brand: { select: { id: true, name: true, slug: true } },
+      variants: { where: { isActive: true }, orderBy: { size: 'asc' } },
       reviews: {
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -163,4 +164,55 @@ export const addImages = asyncHandler(async (req: Request, res: Response) => {
 export const removeImage = asyncHandler(async (req: Request, res: Response) => {
   await prisma.productImage.delete({ where: { id: req.params.imageId as string } });
   sendResponse(res, { message: 'Image removed' });
+});
+
+// ─── VARIANT ENDPOINTS ──────────────────────────────────────────────────────
+
+export const getVariants = asyncHandler(async (req: Request, res: Response) => {
+  const variants = await prisma.productVariant.findMany({
+    where: { productId: req.params.id as string },
+    orderBy: [{ color: 'asc' }, { size: 'asc' }],
+  });
+  sendResponse(res, { data: variants });
+});
+
+export const addVariant = asyncHandler(async (req: Request, res: Response) => {
+  const { size, color, colorCode, imageUrl, price, stock } = req.body;
+  const product = await prisma.product.findUnique({ where: { id: req.params.id as string } });
+  if (!product) throw ApiError.notFound('Product not found');
+
+  const variant = await prisma.productVariant.create({
+    data: {
+      productId: product.id,
+      size: size || null,
+      color: color || null,
+      colorCode: colorCode || null,
+      imageUrl: imageUrl || null,
+      price: price || null,
+      stock: stock || 0,
+    },
+  });
+  sendResponse(res, { statusCode: 201, message: 'Variant added', data: variant });
+});
+
+export const updateVariant = asyncHandler(async (req: Request, res: Response) => {
+  const { size, color, colorCode, imageUrl, price, stock, isActive } = req.body;
+  const variant = await prisma.productVariant.update({
+    where: { id: req.params.variantId as string },
+    data: {
+      ...(size !== undefined && { size: size || null }),
+      ...(color !== undefined && { color: color || null }),
+      ...(colorCode !== undefined && { colorCode: colorCode || null }),
+      ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
+      ...(price !== undefined && { price: price || null }),
+      ...(stock !== undefined && { stock }),
+      ...(isActive !== undefined && { isActive }),
+    },
+  });
+  sendResponse(res, { message: 'Variant updated', data: variant });
+});
+
+export const removeVariant = asyncHandler(async (req: Request, res: Response) => {
+  await prisma.productVariant.delete({ where: { id: req.params.variantId as string } });
+  sendResponse(res, { message: 'Variant removed' });
 });
